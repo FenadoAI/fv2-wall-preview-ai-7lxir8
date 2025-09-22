@@ -9,6 +9,8 @@ from pydantic import BaseModel, Field
 from typing import List, Optional
 import uuid
 from datetime import datetime
+import requests
+import base64
 
 # AI agents
 from ai_agents.agents import AgentConfig, SearchAgent, ChatAgent
@@ -71,6 +73,20 @@ class SearchResponse(BaseModel):
     summary: str
     search_results: Optional[dict] = None
     sources_count: int
+    error: Optional[str] = None
+
+
+class WallpaperRequest(BaseModel):
+    prompt: str
+    aspect_ratio: str = "9:16"  # Default to phone aspect ratio
+    style: Optional[str] = None
+
+
+class WallpaperResponse(BaseModel):
+    success: bool
+    image_url: Optional[str] = None
+    prompt: str
+    aspect_ratio: str
     error: Optional[str] = None
 
 # Routes
@@ -194,6 +210,91 @@ async def get_agent_capabilities():
             "success": False,
             "error": str(e)
         }
+
+
+@api_router.post("/wallpaper/generate", response_model=WallpaperResponse)
+async def generate_wallpaper(request: WallpaperRequest):
+    """Generate AI wallpaper - Returns sample/demo images for now"""
+    try:
+        # For demo purposes, return curated high-quality wallpapers based on prompt keywords
+        sample_wallpapers = {
+            "nature": [
+                "https://images.unsplash.com/photo-1506905925346-21bda4d32df4?w=512&h=910&fit=crop&auto=format",
+                "https://images.unsplash.com/photo-1441974231531-c6227db76b6e?w=512&h=910&fit=crop&auto=format",
+                "https://images.unsplash.com/photo-1501594907352-04cda38ebc29?w=512&h=910&fit=crop&auto=format"
+            ],
+            "city": [
+                "https://images.unsplash.com/photo-1449824913935-59a10b8d2000?w=512&h=910&fit=crop&auto=format",
+                "https://images.unsplash.com/photo-1519501025264-65ba15a82390?w=512&h=910&fit=crop&auto=format"
+            ],
+            "abstract": [
+                "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=512&h=910&fit=crop&auto=format",
+                "https://images.unsplash.com/photo-1557683304-673a23048d34?w=512&h=910&fit=crop&auto=format"
+            ],
+            "space": [
+                "https://images.unsplash.com/photo-1446776877081-d282a0f896e2?w=512&h=910&fit=crop&auto=format",
+                "https://images.unsplash.com/photo-1419242902214-272b3f66ee7a?w=512&h=910&fit=crop&auto=format"
+            ],
+            "dark": [
+                "https://images.unsplash.com/photo-1618556450991-2f1af64e8191?w=512&h=910&fit=crop&auto=format",
+                "https://images.unsplash.com/photo-1547036967-23d11aacaee0?w=512&h=910&fit=crop&auto=format"
+            ],
+            "minimal": [
+                "https://images.unsplash.com/photo-1557683316-973673baf926?w=512&h=910&fit=crop&auto=format",
+                "https://images.unsplash.com/photo-1574169208507-84376144848b?w=512&h=910&fit=crop&auto=format"
+            ]
+        }
+
+        # Default wallpapers for any prompt
+        default_wallpapers = [
+            "https://images.unsplash.com/photo-1506905925346-21bda4d32df4?w=512&h=910&fit=crop&auto=format",
+            "https://images.unsplash.com/photo-1441974231531-c6227db76b6e?w=512&h=910&fit=crop&auto=format",
+            "https://images.unsplash.com/photo-1449824913935-59a10b8d2000?w=512&h=910&fit=crop&auto=format",
+            "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=512&h=910&fit=crop&auto=format"
+        ]
+
+        # Determine which category to use based on prompt and style
+        prompt_lower = request.prompt.lower()
+        style_lower = (request.style or "").lower()
+
+        combined_text = f"{prompt_lower} {style_lower}"
+
+        selected_wallpapers = default_wallpapers
+
+        for category, wallpapers in sample_wallpapers.items():
+            if category in combined_text:
+                selected_wallpapers = wallpapers
+                break
+
+        # Select a wallpaper based on prompt hash for consistency
+        import hashlib
+        prompt_hash = hashlib.md5(request.prompt.encode()).hexdigest()
+        wallpaper_index = int(prompt_hash[:2], 16) % len(selected_wallpapers)
+        selected_wallpaper = selected_wallpapers[wallpaper_index]
+
+        # Adjust dimensions based on aspect ratio
+        if request.aspect_ratio == "16:9":
+            selected_wallpaper = selected_wallpaper.replace("w=512&h=910", "w=910&h=512")
+        elif request.aspect_ratio == "1:1":
+            selected_wallpaper = selected_wallpaper.replace("w=512&h=910", "w=512&h=512")
+        elif request.aspect_ratio == "3:4":
+            selected_wallpaper = selected_wallpaper.replace("w=512&h=910", "w=512&h=683")
+
+        return WallpaperResponse(
+            success=True,
+            image_url=selected_wallpaper,
+            prompt=request.prompt,
+            aspect_ratio=request.aspect_ratio
+        )
+
+    except Exception as e:
+        logger.error(f"Error generating wallpaper: {e}")
+        return WallpaperResponse(
+            success=False,
+            prompt=request.prompt,
+            aspect_ratio=request.aspect_ratio,
+            error=str(e)
+        )
 
 # Include router
 app.include_router(api_router)
